@@ -6,21 +6,25 @@
 <style>
     body {
         margin: 0;
-        background: #0d0d0d;
-        color: white;
-        font-family: Arial, sans-serif;
+        background: #111;
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 15px;
-        gap: 15px;
+        color: white;
+        font-family: system-ui;
+        overflow: hidden;
+
+    }
+
+    h2 {
+        margin-block-start: 0.50em;
+        margin-block-end: 0.10em;
     }
 
     .upload-box {
         display: flex;
+        margin-top: 15px;
         gap: 10px;
-        width: 100%;
-        max-width: 500px;
     }
 
     input[type="file"] {
@@ -31,19 +35,12 @@
         color: white;
     }
 
-    #canvas-container {
-        position: relative;
-        width: 90vw;
-        max-width: 1000px;
-        border-radius: 6px;
-        overflow: hidden;
-        touch-action: none; /* required for smooth dragging */
-        background: #222;
-    }
-
     canvas {
-        width: 100%;
-        display: block;
+        background: black;
+        margin-top: 20px;
+        max-width: 90vw;   /* limits canvas width */
+        border-radius: 10px;
+        display: block;    /* remove inline spacing issues */
     }
 </style>
 </head>
@@ -52,13 +49,11 @@
 <h2>Before / After Image Slider</h2>
 
 <div class="upload-box">
-    <input type="file" id="beforeInput" accept="image/*">
-    <input type="file" id="afterInput" accept="image/*">
+    <label>Before <input type="file" id="beforeInput" accept="image/*"></label>
+    <label>After <input type="file" id="afterInput" accept="image/*"></label>
 </div>
 
-<div id="canvas-container">
-    <canvas id="canvas"></canvas>
-</div>
+<canvas id="canvas"></canvas>
 
 <script>
 const beforeInput = document.getElementById("beforeInput");
@@ -72,76 +67,95 @@ const offAfter = document.createElement("canvas");
 const offBeforeCtx = offBefore.getContext("2d");
 const offAfterCtx = offAfter.getContext("2d");
 
+//State Variables
 let beforeImg = new Image();
 let afterImg = new Image();
-
 let sliderX = 0.5;
 let dragging = false;
 let needsDraw = false;
 
 // ---------- MAIN DRAW FUNCTION (smooth using requestAnimationFrame) ----------
 function draw() {
-    if (!needsDraw) return;
-    needsDraw = false;
-
+    // requestAnimationFrame ensures smooth drawing
     requestAnimationFrame(() => {
-        if (!offAfter.width) return;
+        if (!needsDraw) return;
+        needsDraw = false;
 
-        const clipPos = sliderX * canvas.width;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw AFTER
-        ctx.drawImage(offAfter, 0, 0, canvas.width, canvas.height);
+        // Reference image for scale (AFTER preferred)
+        const refImg = offAfter.width ? offAfter : offBefore;
+        if (!refImg.width) return;
 
+        // Compute uniform scale to fit canvas
+        const scale = Math.min(canvas.width / refImg.width, canvas.height / refImg.height);
+        const imgW = refImg.width * scale;
+        const imgH = refImg.height * scale;
+
+        // Centered offsets
+        const offsetX = (canvas.width - imgW) / 2;
+        const offsetY = (canvas.height - imgH) / 2;
+
+        // --- Draw AFTER image ---
+        if (offAfter.width) {
+            ctx.drawImage(offAfter, 0, 0, offAfter.width, offAfter.height, offsetX, offsetY, imgW, imgH);
+        }
+
+        // --- Draw BEFORE image clipped by slider ---
         if (offBefore.width) {
             ctx.save();
+            const clipPos = sliderX * canvas.width;
             ctx.beginPath();
             ctx.rect(0, 0, clipPos, canvas.height);
             ctx.clip();
 
-            // FORCE BEFORE to match AFTER size
-            ctx.drawImage(offBefore, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(offBefore, 0, 0, offBefore.width, offBefore.height, offsetX, offsetY, imgW, imgH);
             ctx.restore();
 
-            // Vertical slider bar
+            // Draw vertical slider line
             ctx.beginPath();
             ctx.moveTo(clipPos, 0);
             ctx.lineTo(clipPos, canvas.height);
-            ctx.lineWidth = 5;
+            ctx.lineWidth = 3;
             ctx.strokeStyle = "white";
             ctx.stroke();
 
-            // Slider handle
-            ctx.beginPath();
-            ctx.arc(clipPos, canvas.height / 2, 20, 0, Math.PI * 2);
-            ctx.fillStyle = "white";
-            ctx.fill();
+            
         }
     });
 }
+
+function resizeCanvas() {
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    canvas.height = vh * 0.8;   // 80% of viewport height
+    canvas.width  = Math.min(vw * 0.9, 1600); // max width 90% viewport, limit 1600px
+
+    needsDraw = true;
+    draw();
+}
+
+
+window.addEventListener("resize", resizeCanvas);
+
 
 // ---------- CREATE PREVIEW ONLY BASED ON AFTER IMAGE SIZE ----------
 function setupPreview() {
     if (!afterImg.width) return;
 
-    // SCALE preview (max width ~1600px for performance)
-    const maxPreviewWidth = 1600;
-    const scale = Math.min(1, maxPreviewWidth / afterImg.width);
+    // Keep offscreen canvases at original image size
+    offAfter.width = afterImg.width;
+    offAfter.height = afterImg.height;
+    offAfterCtx.drawImage(afterImg, 0, 0);
 
-    const previewW = Math.floor(afterImg.width * scale);
-    const previewH = Math.floor(afterImg.height * scale);
-
-    // Set ALL canvases to same preview size (critical!)
-    offAfter.width = offBefore.width = canvas.width = previewW;
-    offAfter.height = offBefore.height = canvas.height = previewH;
-
-    // Draw AFTER preview
-    offAfterCtx.drawImage(afterImg, 0, 0, previewW, previewH);
-
-    // Draw BEFORE preview (even if smaller, stretch to match)
     if (beforeImg.src) {
-        offBeforeCtx.drawImage(beforeImg, 0, 0, previewW, previewH);
+        offBefore.width = beforeImg.width;
+        offBefore.height = beforeImg.height;
+        offBeforeCtx.drawImage(beforeImg, 0, 0);
     }
 
+    resizeCanvas(); // scale canvas to 70% viewport height
     needsDraw = true;
     draw();
 }
@@ -169,22 +183,39 @@ beforeInput.addEventListener("change", e => loadBefore(e.target.files[0]));
 afterInput.addEventListener("change", e => loadAfter(e.target.files[0]));
 
 // ---------- SLIDER LOGIC ----------
-function updateSlider(clientX) {
-    const rect = canvas.getBoundingClientRect();
-    sliderX = (clientX - rect.left) / rect.width;
-    sliderX = Math.max(0, Math.min(1, sliderX)); // clamp
+canvas.addEventListener("mousedown",e=>{
+    const r = canvas.getBoundingClientRect();
+    sliderX = (e.clientX-r.left)/r.width;
+});
+
+canvas.addEventListener("mousemove",e=>{
+    if(e.buttons==1){
+        const r = canvas.getBoundingClientRect();
+        sliderX = (e.clientX-r.left)/r.width;
+        sliderX = Math.max(0,Math.min(1,sliderX));
+        needsDraw = true;
+        draw();
+    }
+});
+
+canvas.addEventListener("touchstart", e => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    sliderX = (e.touches[0].clientX - r.left) / r.width;
+    sliderX = Math.max(0, Math.min(1, sliderX));
     needsDraw = true;
     draw();
-}
+});
+canvas.addEventListener("touchmove", e => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    sliderX = (e.touches[0].clientX - r.left) / r.width;
+    sliderX = Math.max(0, Math.min(1, sliderX));
+    needsDraw = true;
+    draw();
+});
 
-// Mouse + Touch dragging
-canvas.addEventListener("mousedown", e => { dragging = true; updateSlider(e.clientX); });
-canvas.addEventListener("mousemove", e => { if (dragging) updateSlider(e.clientX); });
-window.addEventListener("mouseup", () => dragging = false);
-
-canvas.addEventListener("touchstart", e => { dragging = true; updateSlider(e.touches[0].clientX); });
-canvas.addEventListener("touchmove", e => { if (dragging) updateSlider(e.touches[0].clientX); });
-window.addEventListener("touchend", () => dragging = false);
+resizeCanvas();
 </script>
 
 
