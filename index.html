@@ -1,192 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Before / After Slider</title>
+<meta charset="UTF-8">
+<title>Compare Tool</title>
 <style>
     body {
-        margin: 0;
-        background: #0d0d0d;
-        color: white;
-        font-family: Arial, sans-serif;
         display: flex;
         flex-direction: column;
+        justify-content: center;
         align-items: center;
-        padding: 15px;
-        gap: 15px;
-    }
-
-    .upload-box {
-        display: flex;
-        gap: 10px;
-        width: 100%;
-        max-width: 500px;
-    }
-
-    input[type="file"] {
-        flex: 1;
-        background: #222;
-        padding: 10px;
-        border-radius: 6px;
+        height: 100vh;
+        margin: 0;
+        background: #111;
         color: white;
+        font-family: system-ui, sans-serif;
+        text-align: center;
     }
 
-    #canvas-container {
-        position: relative;
-        width: 90vw;
-        max-width: 1000px;
-        border-radius: 6px;
-        overflow: hidden;
-        touch-action: none; /* required for smooth dragging */
+    h1 {
+        margin-bottom: 40px;
+    }
+
+    button {
+        padding: 20px 40px;
+        margin: 15px;
+        font-size: 18px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
         background: #222;
+        color: white;
+        transition: 0.2s;
     }
 
-    canvas {
-        width: 100%;
-        display: block;
+    button:hover {
+        background: #0af;
     }
 </style>
 </head>
 <body>
 
-<h2>Before / After Image Slider</h2>
+<h1>Choose Compare Mode</h1>
 
-<div class="upload-box">
-    <input type="file" id="beforeInput" accept="image/*">
-    <input type="file" id="afterInput" accept="image/*">
-</div>
-
-<div id="canvas-container">
-    <canvas id="canvas"></canvas>
-</div>
+<button onclick="goTo('image.html')">📷 Image Compare</button>
+<button onclick="goTo('video.html')">🎥 Video Compare</button>
 
 <script>
-const beforeInput = document.getElementById("beforeInput");
-const afterInput = document.getElementById("afterInput");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-
-// OFFSCREEN CANVASES (for smooth preview)
-const offBefore = document.createElement("canvas");
-const offAfter = document.createElement("canvas");
-const offBeforeCtx = offBefore.getContext("2d");
-const offAfterCtx = offAfter.getContext("2d");
-
-let beforeImg = new Image();
-let afterImg = new Image();
-
-let sliderX = 0.5;
-let dragging = false;
-let needsDraw = false;
-
-// ---------- MAIN DRAW FUNCTION (smooth using requestAnimationFrame) ----------
-function draw() {
-    if (!needsDraw) return;
-    needsDraw = false;
-
-    requestAnimationFrame(() => {
-        if (!offAfter.width) return;
-
-        const clipPos = sliderX * canvas.width;
-
-        // Draw AFTER
-        ctx.drawImage(offAfter, 0, 0, canvas.width, canvas.height);
-
-        if (offBefore.width) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(0, 0, clipPos, canvas.height);
-            ctx.clip();
-
-            // FORCE BEFORE to match AFTER size
-            ctx.drawImage(offBefore, 0, 0, canvas.width, canvas.height);
-            ctx.restore();
-
-            // Vertical slider bar
-            ctx.beginPath();
-            ctx.moveTo(clipPos, 0);
-            ctx.lineTo(clipPos, canvas.height);
-            ctx.lineWidth = 5;
-            ctx.strokeStyle = "white";
-            ctx.stroke();
-
-            // Slider handle
-            ctx.beginPath();
-            ctx.arc(clipPos, canvas.height / 2, 20, 0, Math.PI * 2);
-            ctx.fillStyle = "white";
-            ctx.fill();
-        }
-    });
+function goTo(page) {
+    window.location.href = page;
 }
-
-// ---------- CREATE PREVIEW ONLY BASED ON AFTER IMAGE SIZE ----------
-function setupPreview() {
-    if (!afterImg.width) return;
-
-    // SCALE preview (max width ~1600px for performance)
-    const maxPreviewWidth = 1600;
-    const scale = Math.min(1, maxPreviewWidth / afterImg.width);
-
-    const previewW = Math.floor(afterImg.width * scale);
-    const previewH = Math.floor(afterImg.height * scale);
-
-    // Set ALL canvases to same preview size (critical!)
-    offAfter.width = offBefore.width = canvas.width = previewW;
-    offAfter.height = offBefore.height = canvas.height = previewH;
-
-    // Draw AFTER preview
-    offAfterCtx.drawImage(afterImg, 0, 0, previewW, previewH);
-
-    // Draw BEFORE preview (even if smaller, stretch to match)
-    if (beforeImg.src) {
-        offBeforeCtx.drawImage(beforeImg, 0, 0, previewW, previewH);
-    }
-
-    needsDraw = true;
-    draw();
-}
-
-// ---------- LOADERS ----------
-function loadAfter(file) {
-    const r = new FileReader();
-    r.onload = e => {
-        afterImg.onload = setupPreview;
-        afterImg.src = e.target.result;
-    };
-    r.readAsDataURL(file);
-}
-
-function loadBefore(file) {
-    const r = new FileReader();
-    r.onload = e => {
-        beforeImg.onload = setupPreview;
-        beforeImg.src = e.target.result;
-    };
-    r.readAsDataURL(file);
-}
-
-beforeInput.addEventListener("change", e => loadBefore(e.target.files[0]));
-afterInput.addEventListener("change", e => loadAfter(e.target.files[0]));
-
-// ---------- SLIDER LOGIC ----------
-function updateSlider(clientX) {
-    const rect = canvas.getBoundingClientRect();
-    sliderX = (clientX - rect.left) / rect.width;
-    sliderX = Math.max(0, Math.min(1, sliderX)); // clamp
-    needsDraw = true;
-    draw();
-}
-
-// Mouse + Touch dragging
-canvas.addEventListener("mousedown", e => { dragging = true; updateSlider(e.clientX); });
-canvas.addEventListener("mousemove", e => { if (dragging) updateSlider(e.clientX); });
-window.addEventListener("mouseup", () => dragging = false);
-
-canvas.addEventListener("touchstart", e => { dragging = true; updateSlider(e.touches[0].clientX); });
-canvas.addEventListener("touchmove", e => { if (dragging) updateSlider(e.touches[0].clientX); });
-window.addEventListener("touchend", () => dragging = false);
 </script>
-
 
 </body>
 </html>
