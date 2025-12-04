@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Canvas Video Compare Slider</title>
+<style>
+    body {
+        margin: 0;
+        background: #111;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        color: white;
+        font-family: system-ui;
+    }
+    h2 {
+        margin-block-start: 0.50em;
+        margin-block-end: 0.10em;
+    }
+
+    canvas {
+        background:black;
+        margin-top: 20px;
+        max-width: 95vw;
+        border-radius: 10px;
+    }
+
+    .controls, .playback{
+        margin-top: 15px;
+        display:flex;
+        gap:10px;
+        align-items:center;
+    }
+    .playback{
+        width:90%;
+    }
+    .control-btn {
+        width: 38px;
+        height: 38px;
+        background:#222;
+        border:none;
+        border-radius:6px;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        cursor:pointer;
+        transition:0.15s;
+    }
+
+    .control-btn svg {
+        width: 22px;
+        height: 22px;
+        fill:white;
+    }
+
+    .control-btn:hover{
+        background:#3a3a3a;
+    }
+
+
+    #seek {
+        appearance: none; 
+        -webkit-appearance: none;  /* remove default styling */
+        width: 100%;
+        height: 6px;
+        background: #555;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+
+    #seek::-webkit-slider-thumb {
+        -webkit-appearance: sliderthumb; /* use native thumb styling */
+        width: 16px;
+        height: 16px;
+        background: #fff;
+        border-radius: 50%;
+        border: 2px solid #aaa;
+    }
+
+    #seek::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        background: #fff;
+        border-radius: 50%;
+        border: 2px solid #aaa;
+    }
+
+    input[type="file"]{color:white;}
+    input[type="range"]{ width:300px; }
+</style>
+</head>
+<body>
+
+<h2>🎥 Before / After Video Canvas Compare</h2>
+
+<div class="controls" id="uploadControls">
+    <label>Before <input type="file" id="beforeFile" accept="video/*"></label>
+    <label>After <input type="file" id="afterFile" accept="video/*"></label>
+</div>
+
+<canvas id="c"></canvas>
+<!-- NEW: SINGLE SHARED CONTROL BAR -->
+<div class="playback" id="playbackControls">
+    <!-- PLAY / PAUSE BUTTON -->
+    <button id="playPauseBtn" class="control-btn">
+        <!-- Default icon = PAUSE (⏸) -->
+        <svg viewBox="0 0 24 24">
+            <path d="M6 5h4v14H6zm8 0h4v14h-4z"/>
+        </svg>
+    </button>
+
+    <!-- SCRUBBER -->
+    <input type="range" id="seek" min="0" max="1" step="0.01" value="0">
+
+    <!-- AUDIO SELECT -->
+    <label>Audio Output:</label>
+    <select id="audioSource">
+        <option value="before">Before Video</option>
+        <option value="after">After Video</option>
+    </select>
+
+    <!-- MUTE / UNMUTE BUTTON -->
+    <button id="muteBtn" class="control-btn">
+        <!-- Default icon = UNMUTED -->
+        <svg id="volIcon" viewBox="0 0 512 512" width="24" height="24">
+            <!-- Speaker + sound waves -->
+            <path d="M253.674,80.899L90.27,197.638H26.392C11.857,197.638,0,209.495,0,224.03v70.457c0,14.534,11.857,26.392,26.392,26.392
+                H90.27l163.557,116.739c11.857,8.491,21.419,3.52,21.419-11.016V91.915C275.246,77.38,265.607,72.407,253.674,80.899z"/>
+            <path d="M342.338,81.97c-12.164,0-22.033,9.869-22.033,22.032s9.869,22.032,22.033,22.032c72.98,0,132.115,59.135,132.115,132.116
+                c0,72.981-59.135,132.115-132.115,132.115c-12.164,0-22.033,9.869-22.033,22.032s9.869,22.032,22.033,22.032
+                c97.307,0,176.18-78.872,176.18-176.18C518.518,160.918,439.723,81.97,342.338,81.97z"/>
+            <path d="M342.338,313.153c-12.164,0-22.033,9.868-22.033,22.031c0,12.164,9.869,22.032,22.033,22.032
+                c54.773,0,99.066-44.37,99.066-99.067c0-54.698-44.369-99.067-99.066-99.067c-12.164,0-22.033,9.868-22.033,22.032
+                s9.869,22.032,22.033,22.032c30.369,0,55.08,24.633,55.08,55.08C397.418,288.673,372.785,313.153,342.338,313.153z"/>
+        </svg>
+    </button>
+
+    <button id="fullscreenBtn" class="control-btn">
+        <svg viewBox="0 0 24 24" width="24" height="24">
+            <path d="M6 15V16C6 17.1046 6.89543 18 8 18H9M18 15V16C18 17.1046 17.1046 18 16 18H15M6 9V8C6 6.89543 6.89543 6 8 6H9M18 9V8C18 6.89543 17.1046 6 16 6H15" 
+                stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </button>
+
+</div>
+
+
+<script>
+
+// ------------------------------
+// CANVAS + VIDEO OBJECTS
+// ------------------------------
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+const vBefore = document.createElement("video");
+const vAfter  = document.createElement("video");
+
+vBefore.muted = vAfter.muted = true;
+vBefore.playsinline = vAfter.playsinline = true;
+
+// slider position 0–1
+let sliderX = 0.5;
+
+// Keep playback always synced
+function syncVideos(){
+    if(Math.abs(vBefore.currentTime - vAfter.currentTime) > 0.10){
+        const t = (vBefore.currentTime + vAfter.currentTime)/2;
+        vBefore.currentTime = vAfter.currentTime = t;
+    }
+}
+
+// ------------------------------
+// LOAD VIDEO FILES
+// ------------------------------
+function loadVideo(input, vid){
+    const file = input.files[0];
+    if(!file) return;
+    vid.src = URL.createObjectURL(file);
+    vid.load();
+}
+
+beforeFile.onchange = ()=>loadVideo(beforeFile,vBefore);
+afterFile.onchange  = ()=>loadVideo(afterFile, vAfter);
+
+// ------------------------------
+// FIT VIDEO INSIDE CANVAS
+// NO CROPPING EVER
+// ------------------------------
+function drawVideoFitted(video, xClip=null){
+    if(!video.videoWidth) return;
+
+    const cw = canvas.width, ch = canvas.height;
+    const vw = video.videoWidth, vh = video.videoHeight;
+
+    // determine scale
+    const scale = Math.min(cw/vw, ch/vh); // ensures full visibility
+    const w = vw*scale;
+    const h = vh*scale;
+
+    const offsetX = (cw-w)/2;
+    const offsetY = (ch-h)/2;
+
+    if(xClip !== null){ // clip right/left
+        ctx.save();
+        ctx.rect(0,0,xClip,ch);
+        ctx.clip();
+        ctx.drawImage(video, offsetX, offsetY, w, h);
+        ctx.restore();
+    } else {
+        ctx.drawImage(video, offsetX, offsetY, w, h);
+    }
+}
+
+// ------------------------------
+// RENDER LOOP
+// ------------------------------
+function draw(){
+    requestAnimationFrame(draw);
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    drawVideoFitted(vAfter);  // bottom layer (full)
+    drawVideoFitted(vBefore, sliderX*canvas.width); // clipped reveal
+
+    // slider line
+    ctx.beginPath();
+    ctx.moveTo(sliderX*canvas.width,0);
+    ctx.lineTo(sliderX*canvas.width,canvas.height);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle="white";
+    ctx.stroke();
+
+    syncVideos();
+}
+
+// ------------------------------
+// PLAY WHEN BOTH READY
+// ------------------------------
+let loadedCount = 0;
+function tryPlay(){
+    if(++loadedCount===2){
+        vBefore.play(); 
+        vAfter.play();
+    }
+}
+vBefore.oncanplay = tryPlay;
+vAfter.oncanplay  = tryPlay;
+
+// ------------------------------
+// SLIDER DRAG CONTROL
+// ------------------------------
+canvas.addEventListener("mousedown",e=>{
+    const r = canvas.getBoundingClientRect();
+    sliderX = (e.clientX-r.left)/r.width;
+});
+
+canvas.addEventListener("mousemove",e=>{
+    if(e.buttons==1){
+        const r = canvas.getBoundingClientRect();
+        sliderX = (e.clientX-r.left)/r.width;
+        sliderX = Math.max(0,Math.min(1,sliderX));
+    }
+});
+
+// ------------------------------
+// INITIAL CANVAS SIZE
+// 70% of viewport height & scales
+// ------------------------------
+function resizeCanvas(){
+    const container = canvas.parentElement;
+    if(document.fullscreenElement === container){
+        // fullscreen mode: fill screen while keeping aspect ratio
+        const maxW = window.innerWidth;
+        const maxH = window.innerHeight;
+        const scale = Math.min(maxW / vAfter.videoWidth, maxH / vAfter.videoHeight, 1);
+        canvas.width = Math.floor(vAfter.videoWidth * scale);
+        canvas.height = Math.floor(vAfter.videoHeight * scale);
+    } else {
+        // normal mode: 70% height of viewport
+        canvas.height = Math.floor(window.innerHeight * 0.7);
+        canvas.width  = Math.min(window.innerWidth * 0.9, 1600);
+    }
+}
+resizeCanvas();
+window.onresize=resizeCanvas;
+// ---------------------------------------------------------
+// NEW SECTION — UNIVERSAL PLAYBACK CONTROL
+// ---------------------------------------------------------
+const playPauseBtn = document.getElementById("playPauseBtn");
+const seek = document.getElementById("seek");
+const audioSource = document.getElementById("audioSource");
+const muteBtn = document.getElementById("muteBtn");
+const fullscreenBtn = document.getElementById("fullscreenBtn");
+const playbackControls = document.getElementById("playbackControls");
+const uploadControls = document.getElementById("uploadControls");
+
+fullscreenBtn.onclick = () => {
+    if (!document.fullscreenElement) {
+        // request fullscreen for the canvas container
+        canvas.parentElement.requestFullscreen().catch(err => {
+            alert(`Fullscreen error: ${err.message}`);
+        });
+    } else {
+        document.exitFullscreen();
+    }
+};
+
+// Optional: adjust canvas size when fullscreen changes
+document.addEventListener('fullscreenchange', () => {
+    resizeCanvas();
+
+        if (document.fullscreenElement) {
+        // Hide upload controls
+        uploadControls.style.display = "none";
+
+        // Overlay playback controls
+        playbackControls.style.position = "fixed";
+        playbackControls.style.bottom = "20px";
+        playbackControls.style.left = "50%";
+        playbackControls.style.transform = "translateX(-50%)";
+        playbackControls.style.zIndex = 999;
+        playbackControls.style.background = "rgba(0,0,0,0.5)";
+        playbackControls.style.padding = "8px 12px";
+        playbackControls.style.borderRadius = "8px";
+        playbackControls.style.display = "flex";
+    } else {
+        // Restore normal layout
+        uploadControls.style.display = "flex";
+        playbackControls.style.position = "static";
+        playbackControls.style.transform = "none";
+        playbackControls.style.background = "transparent";
+    }
+});
+
+
+function updateSeekSlider(){
+    if(vBefore.duration>0){
+        seek.value=vBefore.currentTime/vBefore.duration;
+    }
+    requestAnimationFrame(updateSeekSlider);
+}
+updateSeekSlider();
+
+// scrubbar controls both videos
+seek.oninput = () => {
+    const percent = seek.value * 100;
+    seek.style.background = `linear-gradient(to right, #0af 0%, #0af ${percent}%, #555 ${percent}%, #555 100%)`;
+
+    const t = seek.value * vBefore.duration;
+    vBefore.currentTime = t;
+    vAfter.currentTime = t;
+};
+
+// one play/pause button
+playPauseBtn.onclick = () => {
+    const playing = !vBefore.paused;
+
+    if (playing) { vBefore.pause(); vAfter.pause(); }
+    else { vBefore.play(); vAfter.play(); }
+
+    playPauseBtn.innerHTML = playing
+        ? `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`  // ▶ Play
+        : `<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>`; // ⏸ Pause
+};
+
+// single audio source
+audioSource.onchange=()=>{
+    if(audioSource.value==="before"){
+        vBefore.muted=false; vAfter.muted=true;
+    } else {
+        vBefore.muted=true; vAfter.muted=false;
+    }
+};
+audioSource.onchange();
+
+// MUTE / UNMUTE toggle
+muteBtn.onclick = () => {
+    const target = audioSource.value==="before"? vBefore : vAfter;
+    target.muted = !target.muted;
+
+     muteBtn.innerHTML = target.muted
+        ? `
+        <svg viewBox="0 0 512 512" width="24" height="24">
+            <!-- Muted: speaker + X -->
+            <path d="M257.269,78.412L91.494,196.757H26.775C12.01,196.757,0,208.844,0,223.532v71.451c0,14.765,12.087,26.774,26.775,26.774
+            h64.719l165.775,118.346c12.086,8.645,21.727,3.596,21.727-11.169V89.581C279.072,74.816,269.355,69.768,257.269,78.412z"/>
+            <path d="M452.115,260.329l62.5-62.501c5.201-5.202,5.201-13.846,0-19.048l-12.623-12.623c-5.201-5.202-13.846-5.202-19.049,0
+            l-62.5,62.5l-62.041-62.042c-5.201-5.202-13.846-5.202-19.049,0l-12.623,12.623c-5.201,5.202-5.201,13.847,0,19.048l62.043,62.042
+            L326.73,322.37c-5.201,5.202-5.201,13.847,0,19.049l12.623,12.622c5.203,5.202,13.848,5.202,19.049,0L420.443,292l62.041,62.041
+            c5.203,5.202,13.848,5.202,19.049,0l12.623-12.622c5.201-5.202,5.201-13.847,0-19.049L452.115,260.329z"/>
+        </svg>
+        `
+        : `
+        <svg viewBox="0 0 512 512" width="24" height="24">
+            <!-- Unmuted: speaker + sound waves -->
+            <path d="M253.674,80.899L90.27,197.638H26.392C11.857,197.638,0,209.495,0,224.03v70.457c0,14.534,11.857,26.392,26.392,26.392
+            H90.27l163.557,116.739c11.857,8.491,21.419,3.52,21.419-11.016V91.915C275.246,77.38,265.607,72.407,253.674,80.899z"/>
+            <path d="M342.338,81.97c-12.164,0-22.033,9.869-22.033,22.032s9.869,22.032,22.033,22.032c72.98,0,132.115,59.135,132.115,132.116
+            c0,72.981-59.135,132.115-132.115,132.115c-12.164,0-22.033,9.869-22.033,22.032s9.869,22.032,22.033,22.032
+            c97.307,0,176.18-78.872,176.18-176.18C518.518,160.918,439.723,81.97,342.338,81.97z"/>
+            <path d="M342.338,313.153c-12.164,0-22.033,9.868-22.033,22.031c0,12.164,9.869,22.032,22.033,22.032
+            c54.773,0,99.066-44.37,99.066-99.067c0-54.698-44.369-99.067-99.066-99.067c-12.164,0-22.033,9.868-22.033,22.032
+            s9.869,22.032,22.033,22.032c30.369,0,55.08,24.633,55.08,55.08C397.418,288.673,372.785,313.153,342.338,313.153z"/>
+        </svg>
+        `;
+};
+
+draw(); // start loop
+
+</script>
+</body>
+</html>
